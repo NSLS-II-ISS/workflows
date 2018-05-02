@@ -16,6 +16,10 @@ import numpy as np
 import pwd
 import grp
 
+# lightflow stuff
+from lightflow.models import Dag, Action, Parameters, Option
+from lightflow.tasks import PythonTask
+
 # Set up zeromq sockets
 import zmq
 import socket
@@ -31,8 +35,8 @@ import kafka
 # Create PUSHER to send information back to workstations
 
 #Setup beamline specifics:
-beamline_gpfs_path = '/nsls2/xf08id/'
-user_data_path = beamline_gpfs_path + 'users/'
+beamline_gpfs_path = '/nsls2/xf08id'
+user_data_path = beamline_gpfs_path + 'User Data/'
 
 # Set up logging.
 import logging
@@ -55,7 +59,7 @@ def get_logger():
     
         # Write INFO messages to /var/log/data_processing_worker/info.log.
         info_file = logging.handlers.RotatingFileHandler(
-            beamline_gpfs_path + '/users/log/{}_data_processing_lightflow_info.log'.format(machine_name),
+            beamline_gpfs_path + '/log/{}_data_processing_lightflow_info.log'.format(machine_name),
             maxBytes=10000000, backupCount=9)
         info_file.setLevel(logging.INFO)
         info_file.setFormatter(formatter)
@@ -65,23 +69,26 @@ def get_logger():
     return logger
 
 
+
 from databroker import Broker
 from isstools.xiaparser import xiaparser
 from isstools.xasdata import xasdata
 
 class ScanProcessor():
     def __init__(self, dbname, beamline_gpfs_path, username, 
+                 pulses_per_deg=360000, mono_name='hhm_theta',
                  topic="iss-analysis",
                  bootstrap_servers=['cmb01:9092', 'cmb02:9092'],
                  *args, **kwargs):
         # these can't be pickled
         self.logger = get_logger()
+        self.logger.info("Begin scan processor")
         db = Broker.named(dbname)
         db_analysis = Broker.named('iss-analysis')
         # Set up isstools parsers
 
         # TODO: fix pulses per deg
-        gen_parser = xasdata.XASdataGeneric(360000, db, db_analysis)
+        gen_parser = xasdata.XASdataGeneric(pulses_per_deg, db, db_analysis, mono_name=mono_name)
         xia_parser = xiaparser.xiaparser()
 
         self.gen_parser = gen_parser
@@ -89,9 +96,11 @@ class ScanProcessor():
         self.db = db
         self.md = {}
         self.root_path = Path(beamline_gpfs_path)
-        self.user_data_path = Path(beamline_gpfs_path) / Path('users')
+        self.user_data_path = Path(beamline_gpfs_path) / Path('User Data')
         self.xia_data_path = Path(beamline_gpfs_path) / Path('xia_files')
-        context = zmq.Context()
+        # TODO : fix string creation
+        self.logger.debug("setting xia path: {}".format(self.xia_data_path))
+        self.logger.debug("setting user data path: {}".format(self.user_data_path))
         self.uid = pwd.getpwnam(username).pw_uid
         self.gid = grp.getgrnam(username).gr_gid
 
@@ -100,6 +109,7 @@ class ScanProcessor():
         #self.sender = context.socket(zmq.PUSH)
         self.publisher = kafka.KafkaProducer(bootstrap_servers=bootstrap_servers)
         self.topic = topic
+
         # by default we send to srv2
         self.logger.info("Sending request to server")
         #self.sender.connect("tcp://xf08id-srv2:5561")
@@ -145,6 +155,7 @@ class ScanProcessor():
                 ret = create_ret('spectroscopy', current_uid, 'interpolate', self.gen_parser.interp_df,
                                  md, requester)
                 #self.sender.send(ret)
+                self.publisher.send(self.topic, ret)
                 self.logger.info('Interpolation of %s complete', filename)
                 self.logger.info('Binning of %s started', filename)
                 e0 = int(md['e0'])
@@ -158,6 +169,7 @@ class ScanProcessor():
                 
                 ret = create_ret('spectroscopy', current_uid, 'bin', bin_df, md, requester)
                 #self.sender.send(ret)
+                self.publisher.send(self.topic, ret)
                 self.logger.info("Processing complete for %s", md['uid'])
 
                 
@@ -346,9 +358,6 @@ def create_ret(scan_type, uid, process_type, data, metadata, requester):
 
     return (requester.encode() + pickle.dumps(ret))
 
-# lightflow stuff
-from lightflow.models import Dag, Action, Parameters, Option
-from lightflow.tasks import PythonTask
 
 # required parameters for the call
 parameters = Parameters([
@@ -358,6 +367,8 @@ parameters = Parameters([
 
 
 def create_req_func(data, store, signal, context):
+    logger = get_logger()
+    logger.debug("Creating request")
     uid = store.get('uid')
     requester = store.get('requester')
     data['uid'] = uid
@@ -372,6 +383,7 @@ def create_req_func(data, store, signal, context):
                 'interp_base': 'i0'
             }
         }
+    logger.debug("Done creating request")
 
 def create_ret_func(scan_type, uid, process_type, data, metadata, requester):
     ret = {'type':scan_type,
@@ -419,14 +431,28 @@ def process_run_func(data, store, signal, context):
 
 
 
-
-create_req_task = PythonTask(name="create_request", callback=create_req_func,
+# TODO : Name *MUST* match the task name now
+create_req_task = PythonTask(name="create_req_func", callback=create_req_func,
                              queue='iss-task')
-process_run_task = PythonTask(name="process_results",
+process_run_task = PythonTask(name="process_run_func",
                               callback=process_run_func, queue='iss-task')
 
 
-d = Dag("processing_dag", queue="iss-dag")
+def test(data, store, signal, context):
+    logger = get_logger()
+    logger.info("test1")
+
+def test2(data, store, signal, context):
+    logger = get_logger()
+    logger.info("test2")
+
+test_task = PythonTask(name='test', callback=test, queue='iss-task')
+test_task2 = PythonTask(name='test2', callback=test2, queue='iss-task')
+
+d = Dag("interpolation", queue="iss-dag")
 d.define({
+    #create_req_task: None,
     create_req_task: process_run_task,
+    #test_task : None,
+    #test_task : test_task2,
     })
