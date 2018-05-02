@@ -22,6 +22,8 @@ import socket
 #context = zmq.Context()
 machine_name = socket.gethostname()
 
+import kafka
+
 # Create PULLER to receive information from workstations
 #receiver = context.socket(zmq.PULL)
 #receiver.connect("tcp://xf08id-srv2:5560")
@@ -96,6 +98,8 @@ class ScanProcessor():
         # TODO : move this in a separate function? (Julien)
         #context = zmq.Context()
         #self.sender = context.socket(zmq.PUSH)
+        self.publisher = kafka.KafkaProducer(bootstrap_servers=bootstrap_servers)
+        self.topic = topic
         # by default we send to srv2
         self.logger.info("Sending request to server")
         #self.sender.connect("tcp://xf08id-srv2:5561")
