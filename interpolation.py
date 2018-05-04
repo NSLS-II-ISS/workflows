@@ -71,26 +71,6 @@ def get_logger():
     return logger
 
 
-def wait_on_future(future, timeout=60):
-    ''' wait on a future returned by kafka
-        timeout : int, s
-            default is 60
-    '''
-    t0 = ttime.time()
-    new_status = future.is_done
-    while not new_status:
-        new_status = future.is_done
-        t1 = ttime.time()
-        if(t1-t0)>timeout:
-            logger =get_logger()
-            logger.info("Timed out on future {}".format(future))
-            return
-    logger.info("Submitted kafka message successfully")
-
-
-    
-
-
 from databroker import Broker
 from isstools.xiaparser import xiaparser
 from isstools.xasdata import xasdata
@@ -176,7 +156,8 @@ class ScanProcessor():
                 ret = create_ret('spectroscopy', current_uid, 'interpolate', self.gen_parser.interp_df,
                                  md, requester)
                 #self.sender.send(ret)
-                wait_on_future(self.publisher.send(self.topic, ret))
+                future = self.publisher.send(self.topic, ret)
+                result = future.get(timeout=60)
                 self.logger.info('Interpolation of %s complete', filename)
                 self.logger.info('Binning of %s started', filename)
                 e0 = int(md['e0'])
@@ -191,7 +172,8 @@ class ScanProcessor():
                 ret = create_ret('spectroscopy', current_uid, 'bin', bin_df, md, requester)
                 #self.sender.send(ret)
                 # need to wait before exiting
-                wait_on_future(self.publisher.send(self.topic, ret))
+                future = self.publisher.send(self.topic, ret)
+                result = future.get(timeout=60)
                 self.logger.info("Processing complete for %s", md['uid'])
 
                 
@@ -230,7 +212,8 @@ class ScanProcessor():
         os.chown(filename, self.uid, self.gid)
         ret = create_ret('spectroscopy', md['uid'], 'bin', bin_df, md, requester)
         self.logger.info('File %s binned', filename)
-        wait_on_future(self.publisher.send(self.topic, ret))
+        future = self.publisher.send(self.topic, ret)
+        result = future.get(timeout=60)
         # WARNING: We NEED this sleep!
         # There seems to be a bug with pykafka!!!!
         ttime.sleep(1)
@@ -255,7 +238,8 @@ class ScanProcessor():
         logger.info("Processor: sending back the interpolated data from request to topic {}".format(self.topic))
         #from celery.contrib import rdb
         #rdb.set_trace()
-        wait_on_future(self.publisher.send(self.topic, ret))
+        future = self.publisher.send(self.topic, ret)
+        result = future.get(timeout=60)
         # WARNING: We NEED this sleep!
         # There seems to be a bug with pykafka!!!!
         ttime.sleep(1)
