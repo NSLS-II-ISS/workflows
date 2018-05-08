@@ -153,7 +153,7 @@ class ScanProcessor():
 
                 self.logger.info('Interpolated file %s stored to ', filename)
 
-                ret = create_ret('spectroscopy', current_uid, 'interpolate', self.gen_parser.interp_df,
+                ret = create_ret('spectroscopy', current_uid, 'interpolate', filename,
                                  md, requester)
                 #self.sender.send(ret)
                 future = self.publisher.send(self.topic, ret)
@@ -169,7 +169,7 @@ class ScanProcessor():
                 self.logger.info('Binning of %s complete', filename)
                 
                 
-                ret = create_ret('spectroscopy', current_uid, 'bin', bin_df, md, requester)
+                ret = create_ret('spectroscopy', current_uid, 'bin', filename, md, requester)
                 #self.sender.send(ret)
                 # need to wait before exiting
                 future = self.publisher.send(self.topic, ret)
@@ -210,7 +210,7 @@ class ScanProcessor():
         filename = self.gen_parser.data_manager.export_dat(f'{str(current_filepath)}', e0)
         
         os.chown(filename, self.uid, self.gid)
-        ret = create_ret('spectroscopy', md['uid'], 'bin', bin_df, md, requester)
+        ret = create_ret('spectroscopy', md['uid'], 'bin', filename, md, requester)
         self.logger.info('File %s binned', filename)
         future = self.publisher.send(self.topic, ret)
         result = future.get(timeout=60)
@@ -234,7 +234,7 @@ class ScanProcessor():
         logger.info("Processor: reading interp file : {}".format(str(current_filepath)))
         self.gen_parser.loadInterpFile(f'{str(current_filepath)}')
         logger.info("Processor: loaded. Preparing return to send")
-        ret = create_ret('spectroscopy', md['uid'], 'request_interpolated_data', self.gen_parser.interp_df, md, requester)
+        ret = create_ret('spectroscopy', md['uid'], 'request_interpolated_data', current_filepath, md, requester)
         logger.info("Processor: sending back the interpolated data from request to topic {}".format(self.topic))
         #from celery.contrib import rdb
         #rdb.set_trace()
@@ -367,11 +367,20 @@ class ScanProcessor():
             logger.info("Directory %s created succesfully", path)
 
 def create_ret(scan_type, uid, process_type, data, metadata, requester):
+    '''
+        Create a return.
+        Can also be a file path
+    '''
+    if hasattr(data, 'to_msgpack'):
+        data = data.to_msgpack(compress='zlib')
+    else:
+        # not a df, just string
+        data = data.encode()
     ret = {'type':scan_type,
            'uid': uid,
            'processing_ret':{
-                             'type':process_type,
-                             'data':data.to_msgpack(compress='zlib'),
+                             'type': process_type,
+                             'data': data,
                              'metadata': metadata
                             }
           }
