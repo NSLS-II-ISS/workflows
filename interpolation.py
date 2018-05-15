@@ -78,7 +78,7 @@ from isstools.xasdata import xasdata
 class ScanProcessor():
     def __init__(self, dbname, beamline_gpfs_path, username, 
                  pulses_per_deg=360000, mono_name='hhm_theta',
-                 topic="iss-analysis",
+                 topic="iss-processing",
                  bootstrap_servers=['cmb01:9092', 'cmb02:9092'],
                  *args, **kwargs):
         # these can't be pickled
