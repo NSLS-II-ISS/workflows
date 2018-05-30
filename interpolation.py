@@ -415,7 +415,7 @@ def process_run_func(data, store, signal, context):
     #sender_host = "tcp://xf08id-srv2:5561"
 
     logger = get_logger()
-    logger.info("Starting ScanProcessor....")
+    logger.info("Received a request. Starting ScanProcessor....")
     processor = ScanProcessor("iss", beamline_gpfs_path, 'xf08id')
     db = Broker.named("iss")
     
@@ -430,6 +430,7 @@ def process_run_func(data, store, signal, context):
 
     if request['type'] == 'spectroscopy':
         process_type = request['processing_info']['type']
+        logger.info("Received spectroscopy type scan")
 
         start_doc = md 
         if process_type == 'interpolate':
