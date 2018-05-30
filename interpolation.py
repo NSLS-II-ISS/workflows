@@ -252,7 +252,8 @@ class ScanProcessor():
 
     def process_tscanxia(self, md, current_filepath):
         # Parse xia
-        print('Processing: xia scan')
+        logger = get_logger()
+        logger.info('Processing: xia scan')
         self.gen_parser.interpolate(key_base='xia_trigger')
         xia_filename = md['xia_filename']
         xia_filepath = 'smb://xf08id-nas1/xia_data/{}'.format(xia_filename)
@@ -263,17 +264,20 @@ class ScanProcessor():
             smbclient.copy()
         except Exception as exc:
             if exc.args[1] == 'No such file or directory':
-                print('*** File not found in the XIA! Check if the hard drive is full! ***')
+                logger.info('*** File not found in the XIA! Check if the hard drive is full! ***')
             else:
-                print(exc)
-            print('Abort current scan processing!\nDone!')
+                logger.info(exc)
+            logger.info('Abort current scan processing!\nDone!')
             return
 
+        logger.info('Interpolating')
         interp_base = 'xia_trigger'
         self.gen_parser.interpolate(key_base=interp_base)
+        logger.info('Parsing')
         xia_parser = self.xia_parser
         xia_parser.parse(xia_filename, self.xia_data_path)
         xia_parsed_filepath = current_filepath[0: current_filepath.rfind('/') + 1]
+        logger.info('Exporting')
         xia_parser.export_files(dest_filepath=xia_parsed_filepath, all_in_one=True)
 
         try:
